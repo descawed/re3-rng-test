@@ -7,6 +7,12 @@ const fn re3_rng(n: u16) -> u16 {
     ((n << 1) & 0xff00) | ((n.overflowing_mul(258).0 >> 8) & 0x00ff)
 }
 
+const fn re3_rng2(n: u16) -> u16 {
+    let v0 = (n >> 7) & 0xff;
+    let v1 = n.overflowing_add(v0).0 & 0xff;
+    v1 | (v0 << 8)
+}
+
 const SCRIPT_RNG: [u16; 24312] = const {
     let mut rng = SEED;
     let mut values = [0u16; 24312];
@@ -27,6 +33,20 @@ const SCRIPT_RNG: [u16; 24312] = const {
 
     values
 };
+
+const fn check_algo() {
+    let mut rng = SEED;
+    loop {
+        let next_rng = re3_rng(rng);
+        if re3_rng2(rng) != next_rng {
+            panic!("Algorithms differ");
+        }
+        if next_rng == SEED {
+            break;
+        }
+        rng = next_rng;
+    }
+}
 
 fn check_rng(seed: u16) -> (u16, bool) {
     let mut found_freeze = false;
@@ -61,6 +81,7 @@ fn check_rng(seed: u16) -> (u16, bool) {
         println!("\t{:02X}: {}", byte, count);
     }
 
+    let num_values = num_values as f32;
     println!("Bit counts:");
     for i in 0..8 {
         let bit = 1 << i;
@@ -71,18 +92,27 @@ fn check_rng(seed: u16) -> (u16, bool) {
             }
         }
 
-        println!("\t{:08b}: {} ({}%)", bit, total, (total as f32 / num_values as f32) * 100.);
+        println!("\t{:08b}: {} ({}%)", bit, total, (total as f32 / num_values) * 100.);
     }
 
     println!("Mod 3 probabilities:");
     for (i, count) in mod3.into_iter().enumerate() {
-        println!("\t{i}: {count} ({}%)", (count as f32 / num_values as f32) * 100.);
+        println!("\t{i}: {count} ({}%)", (count as f32 / num_values) * 100.);
     }
 
     println!("Mod 4 probabilities:");
     for (i, count) in mod4.into_iter().enumerate() {
-        println!("\t{i}: {count} ({}%)", (count as f32 / num_values as f32) * 100.);
+        println!("\t{i}: {count} ({}%)", (count as f32 / num_values) * 100.);
     }
+
+    // probability that addition will carry into or borrow from the high 8 bits
+    let mut total_probability = 0f32;
+    for (byte, &count) in byte_counts.iter().enumerate() {
+        let byte = byte as i16;
+        let byte_probability = count as f32 / num_values; // 1./256.;
+        total_probability += byte_probability * ((byte - 128).max(0) + (128 - byte).max(0)/*255 - byte*/) as f32 / 256.;
+    }
+    println!("Carry probability: {}%", total_probability * 100.);
 
     (i, found_freeze)
 }
@@ -104,6 +134,7 @@ fn check_script_rng() {
     let num_values: i32 = script_rng_counts.iter().map(|(_, &v)| v).sum();
     println!("{} unique script RNG values possible; {} total values", script_rng_counts.len(), num_values);
 
+    let num_values = num_values as f32;
     println!("Bit counts:");
     for i in 0..16 {
         let bit = 1 << i;
@@ -114,7 +145,7 @@ fn check_script_rng() {
             }
         }
 
-        println!("\t{:016b}: {} ({}%)", bit, total, (total as f32 / num_values as f32) * 100.);
+        println!("\t{:016b}: {} ({}%)", bit, total, (total as f32 / num_values) * 100.);
     }
 
     let mut mod3 = [0, 0, 0];
@@ -124,7 +155,7 @@ fn check_script_rng() {
 
     println!("Mod 3 probabilities:");
     for (i, count) in mod3.into_iter().enumerate() {
-        println!("\t{i}: {count} ({}%)", (count as f32 / num_values as f32) * 100.);
+        println!("\t{i}: {count} ({}%)", (count as f32 / num_values) * 100.);
     }
 }
 
@@ -133,7 +164,8 @@ fn main() {
         panic!("RNG function is broken");
     }
 
-    //check_rng(SEED);
+    check_algo();
+    check_rng(SEED);
     check_script_rng();
 
     /*check_rng(0x647d); // PDEMO00
