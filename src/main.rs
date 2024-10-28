@@ -149,13 +149,26 @@ fn check_script_rng() {
     }
 
     let mut mod3 = [0, 0, 0];
+    let mut pharm_probs = [0, 0, 0];
     for (&rng, &count) in &script_rng_counts {
-        mod3[(rng as usize) % 3] += count;
+        let remainder = (rng as usize) % 3;
+        mod3[remainder] += count;
+        // account for bug(?) in pharmacy computer logic
+        if (rng & 0x8000) != 0 && remainder != 0 {
+            pharm_probs[1] += count;
+        } else {
+            pharm_probs[remainder] += count;
+        }
     }
 
     println!("Mod 3 probabilities:");
     for (i, count) in mod3.into_iter().enumerate() {
         println!("\t{i}: {count} ({}%)", (count as f32 / num_values) * 100.);
+    }
+
+    println!("Pharmacy password probabilities:");
+    for (count, password) in pharm_probs.into_iter().zip(["Adravil", "Safsprin", "Aqua Cure"]) {
+        println!("\t{password}: {count} ({}%)", (count as f32 / num_values) * 100.);
     }
 }
 
